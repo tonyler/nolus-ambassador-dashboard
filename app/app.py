@@ -23,7 +23,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+class ReverseProxied:
+    """Middleware to handle reverse proxy with URL prefix (e.g., /nolus)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        script_name = environ.get('HTTP_X_SCRIPT_NAME', '')
+        if script_name:
+            environ['SCRIPT_NAME'] = script_name
+            path_info = environ.get('PATH_INFO', '')
+            if path_info.startswith(script_name):
+                environ['PATH_INFO'] = path_info[len(script_name):]
+        return self.app(environ, start_response)
+
+
 app = Flask(__name__)
+# Add ReverseProxied middleware to handle X-Script-Name header from nginx
+app.wsgi_app = ReverseProxied(app.wsgi_app)
 # Add ProxyFix to handle X-Forwarded-* headers from nginx
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
