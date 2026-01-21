@@ -1,0 +1,53 @@
+{
+  "ambassadors": [
+    "Tony",
+    "Emlanis",
+    "Sir Thanos",
+    "Martinezz",
+    "Beltein",
+    "Odi",
+    "Frifalin",
+    "BlackOwl"
+  ],
+  "ambassador_mapping": {
+    "tony": "Tony",
+    "emlanis": "Emlanis",
+    "sir thanos": "Sir Thanos",
+    "sirthanos": "Sir Thanos",
+    "martinezz": "Martinezz",
+    "beltein": "Beltein",
+    "odi": "Odi",
+    "frifalin": "Frifalin",
+    "blackowl": "BlackOwl"
+  },
+  "leaderboard": {
+    "excluded_months": [],
+    "special_positioning": {}
+  },
+  "discord": {
+    "nolan_role_id": 935889606237380618,
+    "x_channel_id": 1240625603695349781,
+    "reddit_channel_id": 1357545736006406184
+  },
+  "spreadsheets": {
+    "x_content_sheet_id": "14gsMZ9YZObD556QJpQwshvTTeWp22UEv3KKz-o7BwCs",
+    "reddit_content_sheet_id": "1Sn_8VMyuJvJKgqRXmvsOA-twgz8ayUixI2x2A-M3wRw"
+  },
+  "cache": {
+    "ttl_seconds": 60
+  },
+  "reddit_api": {
+    "retry_attempts": 3,
+    "retry_delay_seconds": 2
+  },
+  "x_scraper": {
+    "schedule_interval_minutes": 1440,
+    "scrape_delay_seconds": 5,
+    "page_timeout_seconds": 15,
+    "max_consecutive_failures": 5,
+    "blocking_base_wait_minutes": 30,
+    "blocking_max_wait_hours": 8,
+    "scrape_current_month_only": true,
+    "cookie_file": "../../x_session.json"
+  }
+}
