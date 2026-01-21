@@ -400,6 +400,66 @@ class DatabaseService:
         finally:
             conn.close()
 
+    def update_x_post_ambassador(self, tweet_id: str, ambassador: str) -> bool:
+        """Update ambassador for an X post.
+
+        Args:
+            tweet_id: Tweet ID
+            ambassador: New ambassador name
+
+        Returns:
+            True if updated, False otherwise
+        """
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE x_posts SET ambassador = ?, last_updated = CURRENT_TIMESTAMP
+                    WHERE tweet_id = ?
+                ''', (ambassador, tweet_id))
+                conn.commit()
+                updated = cursor.rowcount > 0
+                if updated:
+                    logger.info(f"Updated ambassador to '{ambassador}' for tweet {tweet_id}")
+                return updated
+            except Exception as e:
+                logger.error(f"Error updating X post ambassador: {e}")
+                conn.rollback()
+                return False
+            finally:
+                conn.close()
+
+    def update_reddit_post_ambassador(self, post_id: str, ambassador: str) -> bool:
+        """Update ambassador for a Reddit post.
+
+        Args:
+            post_id: Reddit post ID
+            ambassador: New ambassador name
+
+        Returns:
+            True if updated, False otherwise
+        """
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE reddit_posts SET ambassador = ?, last_updated = CURRENT_TIMESTAMP
+                    WHERE post_id = ?
+                ''', (ambassador, post_id))
+                conn.commit()
+                updated = cursor.rowcount > 0
+                if updated:
+                    logger.info(f"Updated ambassador to '{ambassador}' for reddit post {post_id}")
+                return updated
+            except Exception as e:
+                logger.error(f"Error updating Reddit post ambassador: {e}")
+                conn.rollback()
+                return False
+            finally:
+                conn.close()
+
     def get_database_stats(self) -> Dict[str, Any]:
         """Get statistics about database contents.
 

@@ -1,24 +1,37 @@
 {
-  "ambassadors": [
-    "Tony",
-    "Emlanis",
-    "Sir Thanos",
-    "Martinezz",
-    "Beltein",
-    "Odi",
-    "Frifalin",
-    "BlackOwl"
-  ],
-  "ambassador_mapping": {
-    "tony": "Tony",
-    "emlanis": "Emlanis",
-    "sir thanos": "Sir Thanos",
-    "sirthanos": "Sir Thanos",
-    "martinezz": "Martinezz",
-    "beltein": "Beltein",
-    "odi": "Odi",
-    "frifalin": "Frifalin",
-    "blackowl": "BlackOwl"
+  "ambassadors": {
+    "Tony": {
+      "x_handles": ["tony_x_handle"],
+      "reddit_usernames": ["tony_reddit"]
+    },
+    "Emlanis": {
+      "x_handles": ["emlanis_x_handle"],
+      "reddit_usernames": ["emlanis_reddit"]
+    },
+    "Sir Thanos": {
+      "x_handles": ["sirthanos_x_handle"],
+      "reddit_usernames": ["sirthanos_reddit"]
+    },
+    "Martinezz": {
+      "x_handles": ["martinezz_x_handle"],
+      "reddit_usernames": ["martinezz_reddit"]
+    },
+    "Beltein": {
+      "x_handles": ["beltein_x_handle"],
+      "reddit_usernames": ["beltein_reddit"]
+    },
+    "Odi": {
+      "x_handles": ["odi_x_handle"],
+      "reddit_usernames": ["odi_reddit"]
+    },
+    "Frifalin": {
+      "x_handles": ["frifalin_x_handle"],
+      "reddit_usernames": ["frifalin_reddit"]
+    },
+    "BlackOwl": {
+      "x_handles": ["blackowl_x_handle"],
+      "reddit_usernames": ["blackowl_reddit"]
+    }
   },
   "leaderboard": {
     "excluded_months": [],

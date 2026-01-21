@@ -12,6 +12,7 @@ from typing import List, Dict, Tuple, Optional, Any
 
 from local_data_service import LocalDataService
 from db_service import DatabaseService
+from ambassador_service import AmbassadorService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class SheetsService:
         """Initialize the service with LocalDataService backend."""
         self.db_service = DatabaseService()
         self.local_service = LocalDataService(self.db_service)
+        self.ambassador_service = AmbassadorService(self.db_service)
         logger.info("SheetsService initialized with LocalDataService backend")
 
     def _invalidate_cache(self) -> None:
@@ -124,17 +126,17 @@ class SheetsService:
         """
         return self.local_service.get_daily_impressions_for_graph(year, month)
 
-    def add_content(self, ambassador: str, content_url: str) -> Tuple[bool, str]:
+    def add_content(self, content_url: str, ambassador: Optional[str] = None) -> Tuple[bool, str]:
         """Add new content submission.
 
         Args:
-            ambassador: Ambassador name
             content_url: URL of the content (X or Reddit)
+            ambassador: Ambassador name (optional - auto-detected from handle)
 
         Returns:
             Tuple of (success, message)
         """
-        return self.local_service.add_content(ambassador, content_url)
+        return self.local_service.add_content(content_url, ambassador)
 
     def update_reddit_stats(self, year: Optional[int] = None, month: Optional[int] = None) -> Tuple[bool, str]:
         """Trigger Reddit stats refresh.
@@ -147,3 +149,53 @@ class SheetsService:
             Tuple of (success, message)
         """
         return self.local_service.update_reddit_stats(year, month)
+
+    def resolve_ambassador_from_handle(self, handle: str, platform: str = 'x') -> Optional[str]:
+        """Look up ambassador name from platform handle.
+
+        Args:
+            handle: Platform handle (X handle or Reddit username)
+            platform: 'x' or 'reddit'
+
+        Returns:
+            Ambassador name or None if not found
+        """
+        return self.ambassador_service.resolve_ambassador_from_handle(handle, platform)
+
+    def update_x_post_ambassador_from_handle(self, tweet_id: str, author_handle: str) -> Tuple[bool, str]:
+        """Update X post's ambassador based on scraped author handle.
+
+        Args:
+            tweet_id: Tweet ID
+            author_handle: Scraped author handle
+
+        Returns:
+            Tuple of (success, message)
+        """
+        result = self.ambassador_service.update_x_post_ambassador_from_handle(tweet_id, author_handle)
+        if result[0]:
+            self.local_service.clear_cache()
+        return result
+
+    def get_current_month_x_posts(self) -> List[Dict]:
+        """Get X posts for current month that need scraping.
+
+        Returns:
+            List of post dictionaries with Tweet_URL and Ambassador keys
+        """
+        return self.ambassador_service.get_current_month_x_posts()
+
+    def update_x_post_metrics(self, tweet_url: str, metrics: Dict) -> Tuple[bool, str]:
+        """Update X post metrics from scraper.
+
+        Args:
+            tweet_url: Tweet URL
+            metrics: Dictionary with impressions, likes, retweets, replies, date_posted, author_handle
+
+        Returns:
+            Tuple of (success, message)
+        """
+        result = self.ambassador_service.update_x_post_metrics(tweet_url, metrics)
+        if result[0]:
+            self.local_service.clear_cache()
+        return result

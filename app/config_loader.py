@@ -44,12 +44,66 @@ class Config:
     @property
     def ambassadors(self) -> List[str]:
         """Get list of ambassador names"""
-        return self.get('ambassadors', [])
+        ambassadors_data = self.get('ambassadors', {})
+        if isinstance(ambassadors_data, dict):
+            return list(ambassadors_data.keys())
+        return ambassadors_data
 
     @property
-    def ambassador_mapping(self) -> Dict[str, str]:
-        """Get Discord username to ambassador name mapping"""
-        return self.get('ambassador_mapping', {})
+    def ambassadors_config(self) -> Dict[str, Dict]:
+        """Get full ambassadors configuration with handles"""
+        return self.get('ambassadors', {})
+
+    def _is_valid_handle(self, handle: str) -> bool:
+        """Validate handle format (alphanumeric and underscores only).
+
+        Args:
+            handle: Handle to validate
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if not handle or len(handle) > 50:
+            return False
+        return all(c.isalnum() or c == '_' for c in handle)
+
+    def get_ambassador_by_x_handle(self, handle: str) -> Optional[str]:
+        """Look up ambassador name by X/Twitter handle.
+
+        Args:
+            handle: X handle (without @, case-insensitive)
+
+        Returns:
+            Ambassador name or None if not found
+        """
+        if not self._is_valid_handle(handle):
+            return None
+
+        handle_lower = handle.lower()
+        for name, config in self.ambassadors_config.items():
+            x_handles = config.get('x_handles', [])
+            if handle_lower in [h.lower() for h in x_handles]:
+                return name
+        return None
+
+    def get_ambassador_by_reddit_username(self, username: str) -> Optional[str]:
+        """Look up ambassador name by Reddit username.
+
+        Args:
+            username: Reddit username (case-insensitive)
+
+        Returns:
+            Ambassador name or None if not found
+        """
+        if not self._is_valid_handle(username):
+            return None
+
+        username_lower = username.lower()
+        for name, config in self.ambassadors_config.items():
+            reddit_usernames = config.get('reddit_usernames', [])
+            if username_lower in [u.lower() for u in reddit_usernames]:
+                return name
+        return None
 
     @property
     def excluded_months(self) -> List[tuple]:

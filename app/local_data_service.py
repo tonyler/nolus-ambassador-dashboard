@@ -580,12 +580,12 @@ class LocalDataService:
             logger.error(f"Error getting daily impressions for graph: {e}", exc_info=True)
             return None
 
-    def add_content(self, ambassador: str, content_url: str) -> Tuple[bool, str]:
+    def add_content(self, content_url: str, ambassador: Optional[str] = None) -> Tuple[bool, str]:
         """Add new content submission.
 
         Args:
-            ambassador: Ambassador name
             content_url: URL of the content (X or Reddit)
+            ambassador: Ambassador name (optional - will be auto-detected from handle if not provided)
 
         Returns:
             Tuple of (success, message)
@@ -595,42 +595,80 @@ class LocalDataService:
             if not content_url or not content_url.startswith('http'):
                 return False, "Invalid URL provided"
 
+            # Prevent ReDoS by limiting URL length
+            if len(content_url) > 2048:
+                return False, "URL too long"
+
             # Determine platform and extract post ID
             now = datetime.now()
             month_name = now.strftime('%b')
             year = now.year
 
-            # X/Twitter URL patterns
+            # X/Twitter URL patterns - also try to extract handle
             x_patterns = [
-                r'(?:twitter\.com|x\.com)/\w+/status/(\d+)',
+                r'(?:twitter\.com|x\.com)/(\w+)/status/(\d+)',  # with handle
+                r'(?:twitter\.com|x\.com)/i/web/status/(\d+)',  # without handle (i/web format)
             ]
 
-            # Reddit URL patterns
+            # Reddit URL patterns - also try to extract username
             reddit_patterns = [
                 r'reddit\.com/r/\w+/comments/(\w+)',
                 r'redd\.it/(\w+)',
+                r'reddit\.com/user/(\w+)/comments/(\w+)',  # user post format
             ]
 
             post_id = None
             platform = None
+            extracted_handle = None
 
+            # Try X patterns
             for pattern in x_patterns:
                 match = re.search(pattern, content_url)
                 if match:
-                    post_id = match.group(1)
+                    groups = match.groups()
+                    if len(groups) == 2:
+                        # Pattern with handle
+                        if groups[0] != 'i':  # Skip 'i' from i/web format
+                            extracted_handle = groups[0].lower()
+                        post_id = groups[1]
+                    else:
+                        # Pattern without handle (i/web format)
+                        post_id = groups[0]
                     platform = 'x'
                     break
 
+            # Try Reddit patterns if not X
             if not post_id:
                 for pattern in reddit_patterns:
                     match = re.search(pattern, content_url)
                     if match:
-                        post_id = match.group(1)
+                        groups = match.groups()
+                        if len(groups) == 2:
+                            # User post format
+                            extracted_handle = groups[0].lower()
+                            post_id = groups[1]
+                        else:
+                            post_id = groups[0]
                         platform = 'reddit'
                         break
 
             if not post_id or not platform:
                 return False, "Could not parse URL. Please provide a valid X or Reddit post URL."
+
+            # Auto-detect ambassador from handle if not provided
+            if not ambassador and extracted_handle:
+                if platform == 'x':
+                    ambassador = self.config.get_ambassador_by_x_handle(extracted_handle)
+                else:
+                    ambassador = self.config.get_ambassador_by_reddit_username(extracted_handle)
+
+                if ambassador:
+                    logger.info(f"Auto-detected ambassador '{ambassador}' from handle '{extracted_handle}'")
+
+            # Use "Unknown" if still no ambassador
+            if not ambassador:
+                ambassador = "Unknown"
+                logger.warning(f"Could not detect ambassador for handle '{extracted_handle}' - using 'Unknown'")
 
             # Insert into database
             if platform == 'x':

@@ -365,6 +365,61 @@ class XScraper:
 
         return impressions
 
+    def _extract_author_handle(self) -> Optional[str]:
+        """
+        Extract the author's handle from the tweet page
+
+        Returns:
+            Author handle (without @) or None
+        """
+        try:
+            # Method 1: Look for the author link in the tweet header
+            # The author's handle appears in links like href="/username"
+            author_links = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                'article[data-testid="tweet"] a[href^="/"][role="link"]'
+            )
+
+            for link in author_links:
+                href = link.get_attribute('href')
+                if href and '/' in href:
+                    # Extract handle from href like "https://x.com/username" or "/username"
+                    parts = href.rstrip('/').split('/')
+                    potential_handle = parts[-1]
+
+                    # Skip non-handle paths
+                    if potential_handle in ('home', 'explore', 'notifications', 'messages',
+                                           'i', 'search', 'settings', 'compose', 'intent'):
+                        continue
+                    if potential_handle.startswith('status'):
+                        continue
+                    if not potential_handle or potential_handle.startswith('?'):
+                        continue
+
+                    # Valid handle found
+                    logger.debug(f"Extracted author handle: {potential_handle}")
+                    return potential_handle.lower()
+
+            # Method 2: Look for @username text in the tweet
+            username_elements = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                'article[data-testid="tweet"] [dir="ltr"] span'
+            )
+
+            for elem in username_elements:
+                text = elem.text.strip()
+                if text.startswith('@'):
+                    handle = text[1:].lower()  # Remove @ and lowercase
+                    logger.debug(f"Extracted author handle from @mention: {handle}")
+                    return handle
+
+            logger.warning("Could not extract author handle from tweet")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error extracting author handle: {e}")
+            return None
+
     def _extract_date_posted(self) -> Optional[str]:
         """
         Extract the date when the tweet was posted
@@ -440,6 +495,9 @@ class XScraper:
 
             # Extract date posted
             metrics['date_posted'] = self._extract_date_posted()
+
+            # Extract author handle
+            metrics['author_handle'] = self._extract_author_handle()
 
             success_msg = f"Successfully scraped metrics for {tweet_url}"
             logger.info(f"{success_msg}: {metrics}")
