@@ -3,6 +3,7 @@ Discord Bot for Nolus Ambassador Dashboard
 
 Monitors specific Discord channels for X and Reddit links,
 extracts them, and saves to the database using LocalDataService.
+Schedules scraping of all saved posts every 4 hours.
 """
 
 import os
@@ -14,7 +15,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List, Dict
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 # Add app directory to path for imports
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +25,7 @@ if APP_DIR not in sys.path:
 from local_data_service import LocalDataService
 from db_service import DatabaseService
 from config_loader import get_config
+from ambassador_service import AmbassadorService
 
 # Setup logging
 logging.basicConfig(
@@ -100,15 +102,16 @@ class NolusBot(commands.Bot):
         # Initialize services
         self.db_service = DatabaseService()
         self.local_service = LocalDataService(self.db_service)
-        self.ambassador_mapping = config.ambassador_mapping
-
-        if not self.ambassador_mapping:
-            logger.warning("No ambassador mappings configured - all Discord submissions will fail")
+        self.ambassador_service = AmbassadorService(self.db_service)
 
         # Rate limiting: track submission timestamps per user
         self.user_submission_timestamps: Dict[int, List[float]] = defaultdict(list)
         self.submissions_per_hour = 20
         self.rate_limit_window = 3600  # 1 hour in seconds
+
+        # Scraper state
+        self.scraper = None
+        self.scrape_lock = False
 
     def _check_rate_limit(self, user_id: int) -> Tuple[bool, Optional[str]]:
         """Check if user has exceeded rate limits.
@@ -144,51 +147,17 @@ class NolusBot(commands.Bot):
         pattern = X_URL_PATTERN if platform == 'x' else REDDIT_URL_PATTERN
         return pattern.findall(content)
 
-    def _resolve_ambassador(self, display_name: str) -> Tuple[Optional[str], Optional[str]]:
-        """Resolve Discord display name to ambassador name.
-
-        Args:
-            display_name: Discord user's display name
-
-        Returns:
-            Tuple of (ambassador_name, error_message)
-        """
-        # Validate input
-        if not display_name or not isinstance(display_name, str):
-            return None, "Invalid display name provided"
-
-        if len(display_name) > 100:
-            return None, "Display name too long"
-
-        # Normalize the display name for lookup
-        normalized = display_name.lower().strip()
-
-        if not normalized:
-            return None, "Display name cannot be empty"
-
-        # Look up in ambassador mapping
-        if normalized in self.ambassador_mapping:
-            ambassador = self.ambassador_mapping[normalized]
-            if not isinstance(ambassador, str) or len(ambassador) > 100:
-                return None, "Invalid ambassador mapping configuration"
-            return ambassador, None
-
-        # Try without spaces
-        normalized_no_spaces = normalized.replace(' ', '')
-        if normalized_no_spaces in self.ambassador_mapping:
-            ambassador = self.ambassador_mapping[normalized_no_spaces]
-            if not isinstance(ambassador, str) or len(ambassador) > 100:
-                return None, "Invalid ambassador mapping configuration"
-            return ambassador, None
-
-        return None, f"Unknown ambassador: **{display_name}**. Please contact an admin to add your Discord name to the mapping."
-
     async def on_ready(self):
         """Called when bot is ready and connected."""
         logger.info(f'Bot logged in as {self.user.name} (ID: {self.user.id})')
         logger.info(f'Connected to {len(self.guilds)} guilds')
         logger.info(f'Monitoring X channel: {X_CHANNEL_ID}')
         logger.info(f'Monitoring Reddit channel: {REDDIT_CHANNEL_ID}')
+
+        # Start the scheduled scraping task
+        if not self.scrape_posts_task.is_running():
+            self.scrape_posts_task.start()
+            logger.info("Started scheduled scraping task (every 4 hours)")
 
     async def on_error(self, event, *args, **kwargs):
         """Log errors and continue running."""
@@ -231,39 +200,97 @@ class NolusBot(commands.Bot):
                 # No relevant URLs found, skip silently
                 return
 
-            # Get ambassador from Discord display name
-            ambassador, error = self._resolve_ambassador(message.author.display_name)
-            if error:
-                try:
-                    await message.reply(error)
-                except discord.DiscordException as e:
-                    logger.error(f"Failed to send error reply: {e}")
-                return
-
-            # Process each URL
+            # Process each URL - ambassador auto-detected from handle
             results = []
             for url in urls:
-                success, msg = self.local_service.add_content(ambassador, url)
+                success, msg = self.local_service.add_content(url)  # No ambassador param - auto-detect
                 results.append((url, success, msg))
                 log_level = logging.INFO if success else logging.WARNING
-                logger.log(log_level, f"Processed URL from {ambassador}: {url} - {'Success' if success else 'Failed'}: {msg}")
+                logger.log(log_level, f"Processed URL: {url} - {'Success' if success else 'Failed'}: {msg}")
 
             # Build response message
             response_lines = []
             for url, success, msg in results:
                 if success:
-                    response_lines.append(f"Added {platform} post for **{ambassador}**")
+                    response_lines.append(f"Saved {platform} post: {msg}")
                 else:
                     response_lines.append(f"Failed to add post: {msg}")
 
             response = '\n'.join(response_lines)
             try:
-                await message.reply(f"{response}\n\n@everyone")
+                # Send notification with @everyone
+                await message.channel.send(f"@everyone\n\n{response}")
             except discord.DiscordException as e:
-                logger.error(f"Failed to send response reply: {e}")
+                logger.error(f"Failed to send response: {e}")
 
         except Exception as e:
             logger.error(f"Unexpected error in on_message: {e}", exc_info=True)
+
+    @tasks.loop(hours=4)
+    async def scrape_posts_task(self):
+        """Scheduled task to scrape all posts every 4 hours."""
+        if self.scrape_lock:
+            logger.warning("Scrape task already running, skipping...")
+            return
+
+        self.scrape_lock = True
+        logger.info("Starting scheduled scrape of all posts...")
+
+        try:
+            # Import scraper here to avoid circular imports
+            from x_scraper import XScraper
+
+            # Get all current month posts
+            posts = self.ambassador_service.get_current_month_x_posts()
+            if not posts:
+                logger.info("No posts to scrape")
+                return
+
+            logger.info(f"Scraping {len(posts)} X posts...")
+
+            # Initialize scraper
+            scraper = XScraper(cookie_file=config.x_scraper_cookie_file)
+
+            try:
+                success_count = 0
+                fail_count = 0
+
+                for post in posts:
+                    tweet_url = post.get('Tweet_URL', '')
+                    if not tweet_url:
+                        continue
+
+                    try:
+                        metrics, msg = scraper.scrape_tweet_metrics(tweet_url, timeout=15)
+                        if metrics:
+                            self.ambassador_service.update_x_post_metrics(tweet_url, metrics)
+                            success_count += 1
+                            logger.info(f"Scraped: {tweet_url}")
+                        else:
+                            fail_count += 1
+                            logger.warning(f"Failed to scrape {tweet_url}: {msg}")
+                    except Exception as e:
+                        fail_count += 1
+                        logger.error(f"Error scraping {tweet_url}: {e}")
+
+                    # Small delay between requests
+                    import asyncio
+                    await asyncio.sleep(5)
+
+                logger.info(f"Scrape complete: {success_count} success, {fail_count} failed")
+
+            finally:
+                scraper.close_driver()
+
+        except Exception as e:
+            logger.error(f"Error in scheduled scrape task: {e}", exc_info=True)
+        finally:
+            self.scrape_lock = False
+
+    @scrape_posts_task.before_loop
+    async def before_scrape_task(self):
+        """Wait for bot to be ready before starting scrape task."""
+        await self.wait_until_ready()
 
 
 def run_bot():
