@@ -126,13 +126,11 @@ class AmbassadorService:
 
             tweet_id = match.group(1)
 
-            # Check if author_handle was scraped and update ambassador if needed
+            # Use scraped author_handle as ambassador directly
             author_handle = metrics.get('author_handle')
             if author_handle:
-                ambassador = self.config.get_ambassador_by_x_handle(author_handle)
-                if ambassador:
-                    self.db_service.update_x_post_ambassador(tweet_id, ambassador)
-                    logger.info(f"Auto-assigned ambassador '{ambassador}' from handle '{author_handle}'")
+                self.db_service.update_x_post_ambassador(tweet_id, author_handle)
+                logger.info(f"Set ambassador to handle '{author_handle}'")
 
             # Update metrics
             now = datetime.now()

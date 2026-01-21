@@ -655,20 +655,14 @@ class LocalDataService:
             if not post_id or not platform:
                 return False, "Could not parse URL. Please provide a valid X or Reddit post URL."
 
-            # Auto-detect ambassador from handle if not provided
-            if not ambassador and extracted_handle:
-                if platform == 'x':
-                    ambassador = self.config.get_ambassador_by_x_handle(extracted_handle)
-                else:
-                    ambassador = self.config.get_ambassador_by_reddit_username(extracted_handle)
-
-                if ambassador:
-                    logger.info(f"Auto-detected ambassador '{ambassador}' from handle '{extracted_handle}'")
-
-            # Use "Unknown" if still no ambassador
+            # Use extracted handle as ambassador name directly
             if not ambassador:
-                ambassador = "Unknown"
-                logger.warning(f"Could not detect ambassador for handle '{extracted_handle}' - using 'Unknown'")
+                if extracted_handle:
+                    ambassador = extracted_handle
+                    logger.info(f"Using handle '{extracted_handle}' as ambassador")
+                else:
+                    ambassador = "Unknown"
+                    logger.warning("No handle found in URL - using 'Unknown'")
 
             # Insert into database
             if platform == 'x':
